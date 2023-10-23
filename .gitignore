@@ -1,4 +1,3 @@
 data/*
-pretrained_models/*
-*/__pycache__/*
-__pycache__
+pretrained_models/
+__pycache__/
