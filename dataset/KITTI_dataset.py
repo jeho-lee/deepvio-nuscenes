@@ -4,9 +4,9 @@ import os
 import numpy as np
 from PIL import Image
 import torch
+from path import Path
 from torch.utils.data import Dataset
 import scipy.io as sio
-from path import Path
 from utils.utils import rotationError, read_pose_from_text
 from utils import custom_transform
 from collections import Counter
@@ -31,9 +31,11 @@ class KITTI(Dataset):
     def make_dataset(self):
         sequence_set = []
         for folder in self.train_seqs:
+            
             poses, poses_rel = read_pose_from_text(self.root/'poses/{}.txt'.format(folder))
             imus = sio.loadmat(self.root/'imus/{}.mat'.format(folder))['imu_data_interp']
             fpaths = sorted((self.root/'sequences/{}/image_2'.format(folder)).files("*.png"))      
+            
             for i in range(len(fpaths)-self.sequence_length):
                 img_samples = fpaths[i:i+self.sequence_length]
                 imu_samples = imus[i*IMU_FREQ:(i+self.sequence_length-1)*IMU_FREQ+1]
