@@ -166,6 +166,11 @@ def kitti_err_cal(pose_est_mat, pose_gt_mat):
             err.append([first_frame, r_err / len_, t_err / len_, len_])
 
     t_rel, r_rel = computeOverallErr(err)
+    
+    print("t_rel: ", t_rel)
+    print("r_rel: ", r_rel)
+    
+    
     return err, t_rel, r_rel, np.asarray(speed)
 
 def plotPath_2D(seq, poses_gt_mat, poses_est_mat, plot_path_dir, decision, speed, window_size):

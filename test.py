@@ -77,6 +77,7 @@ def main():
     model.eval()
 
     errors = tester.eval(model, 'gumbel-softmax', num_gpu=len(gpu_ids))
+    
     tester.generate_plots(result_dir, 30)
     tester.save_text(result_dir)
     

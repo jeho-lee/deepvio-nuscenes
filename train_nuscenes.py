@@ -2,40 +2,24 @@ from nuscenes.nuscenes import NuScenes
 from nuscenes.can_bus.can_bus_api import NuScenesCanBus
 from nuscenes.utils import splits
 import mmcv
-import numpy as np
-import pprint
 import argparse
-import os
-import torch
 import logging
-from path import Path
 from utils import custom_transform
-from dataset.KITTI_dataset import KITTI
 from dataset.NuScenes_dataset import NuScenes_Dataset
 from model import DeepVIO
-from collections import defaultdict
-from utils.kitti_eval import KITTI_tester, data_partition
-import numpy as np
 import math
 import os
-import glob
 import numpy as np
-import time
-import scipy.io as sio
 import torch
-from PIL import Image
-import torchvision.transforms.functional as TF
-import matplotlib.pyplot as plt
 import math
 from utils.utils import *
-
 from utils.utils import rotationError, read_pose_from_text
 from collections import Counter
 from scipy.ndimage import gaussian_filter1d
 from scipy.signal.windows import triang
 from scipy.ndimage import convolve1d
-from torch.utils.data import Dataset
 from utils import custom_transform
+from utils.nuscenes_eval import NuScenes_tester
 
 #########################################################################################
 dataroot = '/data/public/360_3D_OD_Dataset/nuscenes'
@@ -197,12 +181,15 @@ def main():
     print("loading dataset...")
     
     train_dataset = NuScenes_Dataset(dataroot,
-                                sequence_length=args.seq_len,
-                                max_imu_length=max_imu_length,
-                                cam_names=cam_names,
-                                transform=transform_train,
-                                nusc=nusc,
-                                nusc_can=nusc_can)
+                                     mode='train',
+                                     sequence_length=args.seq_len,
+                                     max_imu_length=max_imu_length,
+                                     cam_names=cam_names,
+                                     transform=transform_train,
+                                     nusc=nusc,
+                                     nusc_can=nusc_can,
+                                     args=args)
+    
     logger.info('train_dataset: ' + str(train_dataset))
     
     train_loader = torch.utils.data.DataLoader(
@@ -224,7 +211,8 @@ def main():
         torch.cuda.set_device(gpu_ids[0])
 
     # Initialize the tester
-    # tester = KITTI_tester(args)
+    val_scene_datasets = train_dataset.get_val_dataset()
+    tester = NuScenes_Tester(val_scene_datasets)
     
     print("loading model...")
     
@@ -287,25 +275,25 @@ def main():
             logger.info(message)
         
             # Evaluate the model
-            # print('Evaluating the model')
-            # logger.info('Evaluating the model')
-            # with torch.no_grad(): 
-            #     model.eval()
-            #     errors = tester.eval(model, selection='gumbel-softmax', num_gpu=len(gpu_ids))
+            print('Evaluating the model')
+            logger.info('Evaluating the model')
+            with torch.no_grad(): 
+                model.eval()
+                errors = tester.eval(model, selection='gumbel-softmax', num_gpu=len(gpu_ids))
         
-            # t_rel = np.mean([errors[i]['t_rel'] for i in range(len(errors))])
-            # r_rel = np.mean([errors[i]['r_rel'] for i in range(len(errors))])
-            # t_rmse = np.mean([errors[i]['t_rmse'] for i in range(len(errors))])
-            # r_rmse = np.mean([errors[i]['r_rmse'] for i in range(len(errors))])
-            # usage = np.mean([errors[i]['usage'] for i in range(len(errors))])
+            t_rel = np.mean([errors[i]['t_rel'] for i in range(len(errors))])
+            r_rel = np.mean([errors[i]['r_rel'] for i in range(len(errors))])
+            t_rmse = np.mean([errors[i]['t_rmse'] for i in range(len(errors))])
+            r_rmse = np.mean([errors[i]['r_rmse'] for i in range(len(errors))])
+            usage = np.mean([errors[i]['usage'] for i in range(len(errors))])
 
-            # if t_rel < best:
-            #     best = t_rel 
-            #     torch.save(model.module.state_dict(), f'{checkpoints_dir}/best_{best:.2f}.pth')
+            if t_rel < best:
+                best = t_rel 
+                torch.save(model.module.state_dict(), f'{checkpoints_dir}/best_{best:.2f}.pth')
         
-            # message = f'Epoch {ep} evaluation finished , t_rel: {t_rel:.4f}, r_rel: {r_rel:.4f}, t_rmse: {t_rmse:.4f}, r_rmse: {r_rmse:.4f}, usage: {usage:.4f}, best t_rel: {best:.4f}'
-            # logger.info(message)
-            # print(message)
+            message = f'Epoch {ep} evaluation finished , t_rel: {t_rel:.4f}, r_rel: {r_rel:.4f}, t_rmse: {t_rmse:.4f}, r_rmse: {r_rmse:.4f}, usage: {usage:.4f}, best t_rel: {best:.4f}'
+            logger.info(message)
+            print(message)
     
     message = f'Training finished, best t_rel: {best:.4f}'
     logger.info(message)

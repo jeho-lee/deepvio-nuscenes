@@ -14,15 +14,43 @@ from nuscenes.utils import splits
 import math
 import mmcv
 
+
+class NuScenes_Val_Dataset(Dataset):
+    def __init__(self, img_path_list, pose_rel_list, imu_list, args):
+        super(NuScenes_Val_Dataset, self).__init__()
+        self.img_path_list = img_path_list
+        self.pose_rel_list = pose_rel_list
+        self.imu_list = imu_list
+        self.args = args
+        
+    def __getitem__(self, index):
+        image_path_sequence = self.img_path_list[index]
+        image_sequence = []
+        for img_path in image_path_sequence:
+            img_as_img = Image.open(img_path)
+            img_as_img = TF.resize(img_as_img, size=(self.args.img_h, self.args.img_w))
+            img_as_tensor = TF.to_tensor(img_as_img) - 0.5
+            img_as_tensor = img_as_tensor.unsqueeze(0)
+            image_sequence.append(img_as_tensor)
+        image_sequence = torch.cat(image_sequence, 0)
+        gt_sequence = self.pose_rel_list[index][:, :6]
+        imu_sequence = torch.FloatTensor(self.imu_list[index])
+        return image_sequence, imu_sequence, gt_sequence
+    
+    def __len__(self):
+        return len(self.img_path_list)
+
 class NuScenes_Dataset(Dataset):
     def __init__(self, 
                  data_root,
+                 mode='train', # or 'val'
                  sequence_length=11,
                  max_imu_length=10,
                  cam_names = ["CAM_FRONT", "CAM_FRONT_RIGHT", "CAM_BACK_RIGHT", "CAM_BACK", "CAM_BACK_LEFT", "CAM_FRONT_LEFT"],
                  transform=None,
                  nusc=None,
-                 nusc_can=None):
+                 nusc_can=None,
+                 args=None):
         self.data_root = data_root
         if nusc is None:
             self.nusc = NuScenes(version='v1.0-trainval', dataroot=self.data_root, verbose=False)
@@ -36,7 +64,10 @@ class NuScenes_Dataset(Dataset):
         self.sequence_length = sequence_length
         self.max_imu_length = max_imu_length
         self.transform = transform
-        self.make_dataset()
+        self.mode = mode
+        if self.mode == 'train':
+            self.make_train_dataset()
+        self.args = args
     
     def get_available_scene_tokens(self):
         """Code from bevdet codebase - tools/data_converter/nuscenes_converter.py"""
@@ -105,10 +136,10 @@ class NuScenes_Dataset(Dataset):
         
         return scene_sample_data, scene_imu_data
     
-    def format_training_inputs(self, scene_sample_data, scene_imu_data):
+    def format_scene_inputs(self, scene_sample_data, scene_imu_data):
         """ Collect image (12hz), pose (12hz), imu data (96hz) of target scene - single training input contains 2 images,  """
-        # 1. 일단 각 training input 모으기 - 2 images, 2 pose, 1 relative pose, 8 imu data
-        training_inputs = []
+        # 1. 일단 각 scene input 모으기 - 2 images, 2 pose, 1 relative pose, 8 imu data
+        scene_inputs = []
         for data_idx, cur_sample_data in enumerate(scene_sample_data):
             
             # 1. get image 
@@ -180,8 +211,8 @@ class NuScenes_Dataset(Dataset):
                 'pose_rel': pose_rel,
                 'imu_data': imu_data
             }
-            training_inputs.append(training_input)
-        return training_inputs
+            scene_inputs.append(training_input)
+        return scene_inputs
     
     def segment_training_inputs(self, training_inputs):
         samples = []
@@ -190,9 +221,7 @@ class NuScenes_Dataset(Dataset):
         while True:
             # get training input chunk of sequence_length
             training_input_chunk = training_inputs[input_idx : input_idx + (self.sequence_length-1)]
-            
             input_idx += 1 # training sequence간 겹치는 images 존재함
-            
             if len(training_input_chunk) < (self.sequence_length-1):
                 break
             
@@ -237,34 +266,64 @@ class NuScenes_Dataset(Dataset):
         
         return samples, weights
     
-    def make_dataset(self):
-        train_scenes, val_scenes = self.get_available_scene_tokens()
-        self.samples, self.weights = [], []
+    def segment_val_inputs(self, scene_inputs):
+        img_samples, pose_rel_samples, imu_samples = [], [], []
+        input_idx = 0
+        while True:
+            val_input_chunk = scene_inputs[input_idx : input_idx + (self.sequence_length - 1)]
+            input_idx = input_idx + (self.sequence_length - 1)
+            if len(val_input_chunk) < (self.sequence_length-1):
+                break
+            
+            imgs = []
+            for val_input in val_input_chunk:
+                imgs.append(val_input['cur_img_path'])
+            imgs.append(val_input_chunk[-1]['next_img_path'])
+            
+            pose_rels = []
+            imus = np.empty((0, 6))
+            for val_input in val_input_chunk:
+                pose_rels.append(val_input['pose_rel'])
+                imus = np.vstack((imus, np.array(val_input['imu_data'])))
 
+            img_samples.append(imgs)
+            pose_rel_samples.append(np.array(pose_rels))
+            imu_samples.append(np.array(imus))
+
+        return img_samples, pose_rel_samples, imu_samples
+                
+    def filter_dataset(self, scenes):
         skipped_scene = []
-        imuavail_train_scenes = []
-        for idx, train_scene in enumerate(train_scenes):
+        imuavail_scenes = []
+        for idx, train_scene in enumerate(scenes):
             scene_name = train_scene['name']
             scene_idx = int(scene_name.split('-')[-1])
             if scene_idx in self.nusc_can.route_blacklist or scene_idx in self.nusc_can.can_blacklist: # skip if scene has no can_bus data
                 skipped_scene.append(scene_name)
                 continue
-            imuavail_train_scenes.append(train_scene)
+            imuavail_scenes.append(train_scene)
         
-        target_train_scenes = []
-        for idx, train_scene in enumerate(imuavail_train_scenes):
+        target_scenes = []
+        for idx, train_scene in enumerate(imuavail_scenes):
             avail_cam_num = 0
             for cam_name in self.cam_names:
                 scene_sample_data, scene_imu_data = self.get_scene_data(train_scene, cam_name)
-                scene_training_inputs = self.format_training_inputs(scene_sample_data, scene_imu_data)
-                if scene_training_inputs is None: # skip if there are any scene samples that have no associated imu data
+                scene_inputs = self.format_scene_inputs(scene_sample_data, scene_imu_data)
+                if scene_inputs is None: # skip if there are any scene samples that have no associated imu data
                     break
                 avail_cam_num += 1
             if avail_cam_num == len(self.cam_names):
-                target_train_scenes.append(train_scene)
+                target_scenes.append(train_scene)
             else:
                 skipped_scene.append(train_scene['name'])
+        print('skipped scenes: {}'.format(len(skipped_scene)))
+        return target_scenes
+    
+    def make_train_dataset(self):
+        train_scenes, val_scenes = self.get_available_scene_tokens()
+        target_train_scenes = self.filter_dataset(train_scenes)
         
+        self.samples, self.weights = [], []
         for idx, train_scene in enumerate(target_train_scenes):
             
             # select camera one by one
@@ -272,15 +331,52 @@ class NuScenes_Dataset(Dataset):
             
             # collect samples and weights                
             scene_sample_data, scene_imu_data = self.get_scene_data(train_scene, cam_name)
-            scene_training_inputs = self.format_training_inputs(scene_sample_data, scene_imu_data)
+            scene_training_inputs = self.format_scene_inputs(scene_sample_data, scene_imu_data)
             scene_samples, scene_weights = self.segment_training_inputs(scene_training_inputs)
             self.samples.extend(scene_samples)
             self.weights.extend(scene_weights)
         
-        print('skipped scenes: {}'.format(len(skipped_scene)))
         print('total samples: {}'.format(len(self.samples)))
         assert len(self.samples) == len(self.weights)
     
+    def get_val_dataset(self):
+        _, val_scenes = self.get_available_scene_tokens()
+        target_val_scenes = self.filter_dataset(val_scenes)
+        
+        total_samples_num = 0
+        val_scene_datasets = []
+        for idx, val_scene in enumerate(target_val_scenes):
+            img_path_list, pose_rel_list, imu_list = [], [], []
+            
+            """
+            TODO
+            camera to ego transformation을 고려해야 하는지?
+            """
+            # select camera one by one
+            cam_name = self.cam_names[idx % len(self.cam_names)]
+            # cam_name = "CAM_FRONT"
+            
+            scene_sample_data, scene_imu_data = self.get_scene_data(val_scene, cam_name)
+            scene_val_inputs = self.format_scene_inputs(scene_sample_data, scene_imu_data)
+            img_samples, pose_rel_samples, imu_samples = self.segment_val_inputs(scene_val_inputs)
+            
+            img_path_list.extend(img_samples)
+            pose_rel_list.extend(pose_rel_samples)
+            imu_list.extend(imu_samples)
+            
+            total_samples_num += len(img_path_list)
+            
+            val_scene_datasets.append(NuScenes_Val_Dataset(img_path_list, pose_rel_list, imu_list, self.args))
+            
+            # TEMP
+            # if idx == 2:
+            #     break
+
+        print('total samples: {}'.format(total_samples_num))
+        
+        return val_scene_datasets
+    
+    # the Dataset class implementation only works for training set
     def __getitem__(self, index):
         sample = self.samples[index]
         imgs = [np.asarray(Image.open(img)) for img in sample['imgs']]
