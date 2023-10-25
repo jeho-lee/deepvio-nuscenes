@@ -19,12 +19,13 @@ from scipy.ndimage import gaussian_filter1d
 from scipy.signal.windows import triang
 from scipy.ndimage import convolve1d
 from utils import custom_transform
-from utils.nuscenes_eval import NuScenes_tester
+from utils.nuscenes_eval import NuScenes_Tester
 
 #########################################################################################
-dataroot = '/data/public/360_3D_OD_Dataset/nuscenes'
+dataroot = '/datasets/nuscenes'
 canbusroot = './data/nuscenes'
-device = '7'
+device = '0'
+batch_size = 8
 #########################################################################################
 
 cam_names = ["CAM_FRONT", "CAM_FRONT_RIGHT", "CAM_BACK_RIGHT", "CAM_BACK", "CAM_BACK_LEFT", "CAM_FRONT_LEFT"]
@@ -55,7 +56,7 @@ parser.add_argument('--workers', type=int, default=4, help='number of workers')
 
 # jeho
 # NuScenes - 68,000 training samples, total 25 epochs -> 1,700,000 iterations assuming batch size 1
-parser.add_argument('--batch_size', type=int, default=64, help='batch size')
+parser.add_argument('--batch_size', type=int, default=batch_size, help='batch size')
 parser.add_argument('--epochs_warmup', type=int, default=5, help='number of epochs for warmup')
 parser.add_argument('--epochs_joint', type=int, default=15, help='number of epochs for joint training')
 parser.add_argument('--epochs_fine', type=int, default=5, help='number of epochs for finetuning')
