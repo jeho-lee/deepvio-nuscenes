@@ -14,6 +14,8 @@ from nuscenes.utils import splits
 import math
 import mmcv
 import torchvision.transforms.functional as TF
+import nuscenes.utils.geometry_utils as geometry_utils
+from pyquaternion import Quaternion
 
 class NuScenes_Val_Dataset(Dataset):
     def __init__(self, img_path_list, pose_rel_list, imu_list, args):
@@ -142,7 +144,7 @@ class NuScenes_Dataset(Dataset):
         scene_inputs = []
         for data_idx, cur_sample_data in enumerate(scene_sample_data):
             
-            # 1. get image 
+            # get image 
             cur_img_path = os.path.join(self.data_root, cur_sample_data['filename'])
             if cur_sample_data['next'] != "":
                 next_sample_data = self.nusc.get('sample_data', cur_sample_data['next'])
@@ -150,36 +152,35 @@ class NuScenes_Dataset(Dataset):
             else:
                 break
             
-            # 2. get ego pose
-            # read_pose in utils.py
+            # get camera to ego transformation
+            cur_cam2ego = self.nusc.get('calibrated_sensor', cur_sample_data['calibrated_sensor_token'])
+            cur_cam2ego_mat = geometry_utils.transform_matrix(cur_cam2ego['translation'], Quaternion(cur_cam2ego['rotation']), inverse=False)
+            
+            next_cam2ego = self.nusc.get('calibrated_sensor', next_sample_data['calibrated_sensor_token'])
+            next_cam2ego_mat = geometry_utils.transform_matrix(next_cam2ego['translation'], Quaternion(next_cam2ego['rotation']), inverse=False)
+            
+            # get ego pose (global to ego transformation)
             cur_ego_pose = self.nusc.get('ego_pose', cur_sample_data['ego_pose_token'])
-            trans = np.array(cur_ego_pose['translation'])
-            trans = trans.reshape(3, -1)
-            rot_mat = quaternion_rotation_matrix(cur_ego_pose['rotation']) # (w, x, y, z)
-            cur_ego_pose_mat = np.concatenate((rot_mat, trans), axis=1)
-            cur_ego_pose_mat = np.array(cur_ego_pose_mat).reshape(3, 4)
-            cur_ego_pose_mat = np.concatenate((cur_ego_pose_mat, np.array([[0, 0, 0, 1]])), 0)
+            cur_ego_pose_mat = geometry_utils.transform_matrix(cur_ego_pose['translation'], Quaternion(cur_ego_pose['rotation']), inverse=False)
             
             next_ego_pose = self.nusc.get('ego_pose', next_sample_data['ego_pose_token'])
-            trans = np.array(next_ego_pose['translation'])
-            trans = trans.reshape(3, -1)
-            rot_mat = quaternion_rotation_matrix(next_ego_pose['rotation']) # (w, x, y, z)
-            next_ego_pose_mat = np.concatenate((rot_mat, trans), axis=1)
-            next_ego_pose_mat = np.array(next_ego_pose_mat).reshape(3, 4)
-            next_ego_pose_mat = np.concatenate((next_ego_pose_mat, np.array([[0, 0, 0, 1]])), 0)    
+            next_ego_pose_mat = geometry_utils.transform_matrix(next_ego_pose['translation'], Quaternion(next_ego_pose['rotation']), inverse=False)
 
-            # 3. get relative pose
-            relative_pose = np.dot(np.linalg.inv(cur_ego_pose_mat), next_ego_pose_mat)
+            cur_cam2global = np.dot(cur_ego_pose_mat, cur_cam2ego_mat)
+            next_cam2global = np.dot(next_ego_pose_mat, next_cam2ego_mat)
+            
+            # get relative pose
+            # relative_pose = np.dot(np.linalg.inv(cur_ego_pose_mat), next_ego_pose_mat)
+            relative_pose = np.dot(np.linalg.inv(cur_cam2global), next_cam2global)
             R_rel = relative_pose[:3, :3]
             t_rel = relative_pose[:3, 3]
-
-                # Extract the Eular angle from the relative rotation matrix
-            x, y, z = euler_from_matrix(R_rel)
+                
+            x, y, z = euler_from_matrix(R_rel) # Extract the Eular angle from the relative rotation matrix
             theta = [x, y, z]
 
             pose_rel = np.concatenate((theta, t_rel))
             
-            # 4. get imu data
+            # get imu data
             cur_timestamp = cur_sample_data['timestamp']
             next_timestamp = next_sample_data['timestamp']
             
@@ -202,7 +203,7 @@ class NuScenes_Dataset(Dataset):
             else:
                 imu_data = imu_data[:self.max_imu_length]
             
-            # 5. make training input
+            # make training input
             training_input = {
                 'cur_img_path': cur_img_path,
                 'next_img_path': next_img_path,
@@ -335,9 +336,6 @@ class NuScenes_Dataset(Dataset):
             scene_samples, scene_weights = self.segment_training_inputs(scene_training_inputs)
             self.samples.extend(scene_samples)
             self.weights.extend(scene_weights)
-            
-            if idx == 1:
-                break
         
         print('total samples: {}'.format(len(self.samples)))
         assert len(self.samples) == len(self.weights)

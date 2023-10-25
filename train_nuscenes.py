@@ -299,7 +299,9 @@ def main():
             logger.info(message)
             print(message)
     
-    message = f'Training finished, best t_rel: {best:.4f}'
+    # message = f'Training finished, best t_rel: {best:.4f}'
+    message = f'Training finished, best t_rmse: {best:.4f}'
+    
     logger.info(message)
     print(message)
 
