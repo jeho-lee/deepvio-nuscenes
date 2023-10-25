@@ -212,8 +212,8 @@ def kitti_err_cal(pose_est_mat, pose_gt_mat):
 
     # metric lengths in meters
     
-    lengths = [100, 200, 300, 400, 500, 600, 700, 800]
-    # lengths = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
+    # lengths = [100, 200, 300, 400, 500, 600, 700, 800]
+    lengths = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
     
     num_lengths = len(lengths)
 
@@ -223,7 +223,7 @@ def kitti_err_cal(pose_est_mat, pose_gt_mat):
 
     for first_frame in range(0, len(pose_gt_mat), step_size):
 
-        calculated_metric_length = 0
+        # calculated_metric_length = 0
         
         for i in range(num_lengths):
             metric_length = lengths[i]
@@ -232,7 +232,7 @@ def kitti_err_cal(pose_est_mat, pose_gt_mat):
             if last_frame == -1 or last_frame >= len(pose_est_mat) or first_frame >= len(pose_est_mat):
                 continue
             
-            calculated_metric_length += 1
+            # calculated_metric_length += 1
 
             pose_delta_gt = np.dot(np.linalg.inv(pose_gt_mat[first_frame]), pose_gt_mat[last_frame])
             pose_delta_result = np.dot(np.linalg.inv(pose_est_mat[first_frame]), pose_est_mat[last_frame])
@@ -264,15 +264,13 @@ def kitti_eval(pose_est, dec_est, pose_gt):
     pose_gt_mat = path_accu(pose_gt)
 
     # Using KITTI metric
-    err_list, t_rel, r_rel, speed = kitti_err_cal(pose_est_mat, pose_gt_mat)
+    # err_list, t_rel, r_rel, speed = kitti_err_cal(pose_est_mat, pose_gt_mat)
     
-    """
-    여기 아닌것 같음 - Kitti로도 찍어보자
-    찍어보니 맞음 - kitti와 nuscenes와의 coord. system 차이에 의해 발생?
-    """
-    t_rel = t_rel * 100
-    r_rel = r_rel / np.pi * 180 * 100
+    # TODO check
+    # t_rel = t_rel * 100
+    # r_rel = r_rel / np.pi * 180 * 100
     r_rmse = r_rmse / np.pi * 180
     usage = np.mean(dec_est) * 100
 
-    return pose_est_mat, pose_gt_mat, t_rel, r_rel, t_rmse, r_rmse, usage, speed
+    # return pose_est_mat, pose_gt_mat, t_rel, r_rel, t_rmse, r_rmse, usage, speed
+    return pose_est_mat, pose_gt_mat, t_rmse, r_rmse, usage

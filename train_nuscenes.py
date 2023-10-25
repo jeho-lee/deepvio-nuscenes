@@ -281,17 +281,21 @@ def main():
                 model.eval()
                 errors = tester.eval(model, selection='gumbel-softmax', num_gpu=len(gpu_ids))
         
-            t_rel = np.mean([errors[i]['t_rel'] for i in range(len(errors))])
-            r_rel = np.mean([errors[i]['r_rel'] for i in range(len(errors))])
+            # t_rel = np.mean([errors[i]['t_rel'] for i in range(len(errors))])
+            # r_rel = np.mean([errors[i]['r_rel'] for i in range(len(errors))])
             t_rmse = np.mean([errors[i]['t_rmse'] for i in range(len(errors))])
             r_rmse = np.mean([errors[i]['r_rmse'] for i in range(len(errors))])
             usage = np.mean([errors[i]['usage'] for i in range(len(errors))])
 
-            if t_rel < best:
-                best = t_rel 
+            # if t_rel < best:
+            if t_rmse < best:
+                # best = t_rel 
+                best = t_rmse
                 torch.save(model.module.state_dict(), f'{checkpoints_dir}/best_{best:.2f}.pth')
         
-            message = f'Epoch {ep} evaluation finished , t_rel: {t_rel:.4f}, r_rel: {r_rel:.4f}, t_rmse: {t_rmse:.4f}, r_rmse: {r_rmse:.4f}, usage: {usage:.4f}, best t_rel: {best:.4f}'
+            # message = f'Epoch {ep} evaluation finished , t_rel: {t_rel:.4f}, r_rel: {r_rel:.4f}, t_rmse: {t_rmse:.4f}, r_rmse: {r_rmse:.4f}, usage: {usage:.4f}, best t_rel: {best:.4f}'
+            message = f'Epoch {ep} evaluation finished, t_rmse: {t_rmse:.4f}, r_rmse: {r_rmse:.4f}, usage: {usage:.4f}, best t_rmse: {best:.4f}'
+            
             logger.info(message)
             print(message)
     

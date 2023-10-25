@@ -13,7 +13,7 @@ from nuscenes.can_bus.can_bus_api import NuScenesCanBus
 from nuscenes.utils import splits
 import math
 import mmcv
-
+import torchvision.transforms.functional as TF
 
 class NuScenes_Val_Dataset(Dataset):
     def __init__(self, img_path_list, pose_rel_list, imu_list, args):
