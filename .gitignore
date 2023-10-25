@@ -2,6 +2,9 @@ data/*
 pretrained_models/
 __pycache__/
 utils/__pycahce__
+results/
+*.pth
 
 # workspace dependent exec file
 train_nuscenes.sh
+slurm*

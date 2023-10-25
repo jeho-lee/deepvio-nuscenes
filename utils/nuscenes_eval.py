@@ -42,10 +42,13 @@ class NuScenes_Tester():
             print(f'testing sequence {i}')
             
             pose_est, dec_est, prob_est, pose_rel_gt_list = self.test_one_scene(model, scene_dataset, selection, num_gpu=num_gpu, p=p)  
-            pose_est_global, pose_gt_global, t_rel, r_rel, t_rmse, r_rmse, usage, speed = kitti_eval(pose_est, dec_est, pose_rel_gt_list)
+            # pose_est_global, pose_gt_global, t_rel, r_rel, t_rmse, r_rmse, usage, speed = kitti_eval(pose_est, dec_est, pose_rel_gt_list)
+            pose_est_global, pose_gt_global, t_rmse, r_rmse, usage = kitti_eval(pose_est, dec_est, pose_rel_gt_list)
             
-            self.est.append({'pose_est_global':pose_est_global, 'pose_gt_global':pose_gt_global, 'decs':dec_est, 'probs':prob_est, 'speed':speed})
-            self.errors.append({'t_rel':t_rel, 'r_rel':r_rel, 't_rmse':t_rmse, 'r_rmse':r_rmse, 'usage':usage})
+            # self.est.append({'pose_est_global':pose_est_global, 'pose_gt_global':pose_gt_global, 'decs':dec_est, 'probs':prob_est, 'speed':speed})
+            # self.errors.append({'t_rel':t_rel, 'r_rel':r_rel, 't_rmse':t_rmse, 'r_rmse':r_rmse, 'usage':usage})
+            self.est.append({'pose_est_global':pose_est_global, 'pose_gt_global':pose_gt_global, 'decs':dec_est, 'probs':prob_est})
+            self.errors.append({'t_rmse':t_rmse, 'r_rmse':r_rmse, 'usage':usage})
         
         return self.errors
     
