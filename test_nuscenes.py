@@ -36,7 +36,7 @@ from scipy.signal.windows import triang
 from scipy.ndimage import convolve1d
 from torch.utils.data import Dataset
 from utils import custom_transform
-from utils.nuscenes_eval import NuScenes_tester
+from utils.nuscenes_eval import NuScenes_Tester
 
 #########################################################################################
 dataroot = '/data/public/360_3D_OD_Dataset/nuscenes'

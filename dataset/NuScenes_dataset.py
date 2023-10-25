@@ -335,6 +335,9 @@ class NuScenes_Dataset(Dataset):
             scene_samples, scene_weights = self.segment_training_inputs(scene_training_inputs)
             self.samples.extend(scene_samples)
             self.weights.extend(scene_weights)
+            
+            if idx == 1:
+                break
         
         print('total samples: {}'.format(len(self.samples)))
         assert len(self.samples) == len(self.weights)

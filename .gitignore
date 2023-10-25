@@ -3,3 +3,5 @@ pretrained_models/
 __pycache__/
 utils/__pycahce__
 
+# workspace dependent exec file
+train_nuscenes.sh
