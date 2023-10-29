@@ -46,14 +46,25 @@ class NuScenes_Dataset(Dataset):
     def __init__(self, 
                  data_root,
                  mode='train', # or 'val'
+                 
                  sequence_length=11,
-                 max_imu_length=10,
+                 keyframe_only=True,
+                 sampling_rate = 1,
+                 max_imu_length = 50,
+                 
                  cam_names = ["CAM_FRONT", "CAM_FRONT_RIGHT", "CAM_BACK_RIGHT", "CAM_BACK", "CAM_BACK_LEFT", "CAM_FRONT_LEFT"],
                  transform=None,
                  nusc=None,
                  nusc_can=None,
                  args=None):
         self.data_root = data_root
+        
+        # Determine data sampling
+        self.keyframe_only = keyframe_only
+        self.sampling_rate = sampling_rate
+        self.sequence_length = sequence_length
+        self.max_imu_length = max_imu_length
+        
         if nusc is None:
             self.nusc = NuScenes(version='v1.0-trainval', dataroot=self.data_root, verbose=False)
         else:
@@ -63,8 +74,6 @@ class NuScenes_Dataset(Dataset):
         else:
             self.nusc_can = nusc_can
         self.cam_names = cam_names
-        self.sequence_length = sequence_length
-        self.max_imu_length = max_imu_length
         self.transform = transform
         self.mode = mode
         if self.mode == 'train':
@@ -130,24 +139,33 @@ class NuScenes_Dataset(Dataset):
         while True:
             try:
                 scene_sample_data.append(cur_sample_data)
-                cur_sample_data = self.nusc.get('sample_data', cur_sample_data['next'])
+                if self.keyframe_only:
+                    cur_sample = self.nusc.get('sample', cur_sample['next'])
+                    cur_sample_data = self.nusc.get('sample_data', cur_sample['data'][cam_name])
+                else:
+                    cur_sample_data = self.nusc.get('sample_data', cur_sample_data['next'])
             except:
                 break
+        
+        if self.keyframe_only:
+            for sample_data in scene_sample_data:
+                assert sample_data['is_key_frame'] == True
         
         scene_imu_data = self.nusc_can.get_messages(scene_name, 'ms_imu')
         
         return scene_sample_data, scene_imu_data
     
     def format_scene_inputs(self, scene_sample_data, scene_imu_data):
-        """ Collect image (12hz), pose (12hz), imu data (96hz) of target scene - single training input contains 2 images,  """
-        # 1. 일단 각 scene input 모으기 - 2 images, 2 pose, 1 relative pose, 8 imu data
+        # 1. scene input: 2 images, 2 pose, 1 relative pose, N imu data
         scene_inputs = []
         for data_idx, cur_sample_data in enumerate(scene_sample_data):
             
             # get image 
             cur_img_path = os.path.join(self.data_root, cur_sample_data['filename'])
-            if cur_sample_data['next'] != "":
-                next_sample_data = self.nusc.get('sample_data', cur_sample_data['next'])
+            
+            # get next image
+            if data_idx + 1 < len(scene_sample_data):
+                next_sample_data = scene_sample_data[data_idx + 1]
                 next_img_path = os.path.join(self.data_root, next_sample_data['filename'])
             else:
                 break
@@ -200,11 +218,18 @@ class NuScenes_Dataset(Dataset):
             # if imu data length is less than max_imu_length, pad with zeros
             if len(imu_data) < self.max_imu_length:
                 imu_data = np.pad(imu_data, ((0, self.max_imu_length - len(imu_data)), (0, 0)), 'constant', constant_values=0)
-            else:
-                imu_data = imu_data[:self.max_imu_length]
+            elif len(imu_data) > self.max_imu_length:
+                # imu_data = imu_data[:self.max_imu_length]
+                # delete imu data evenly
+                delete_num = len(imu_data) - self.max_imu_length
+                step = len(imu_data) // delete_num
+                delete_indices = []
+                for i in range(delete_num):
+                    delete_indices.append(i*step)
+                imu_data = np.delete(imu_data, delete_indices, axis=0)
             
             # make training input
-            training_input = {
+            scene_input = {
                 'cur_img_path': cur_img_path,
                 'next_img_path': next_img_path,
                 'cur_ego_pose': cur_ego_pose_mat,
@@ -212,7 +237,8 @@ class NuScenes_Dataset(Dataset):
                 'pose_rel': pose_rel,
                 'imu_data': imu_data
             }
-            scene_inputs.append(training_input)
+            scene_inputs.append(scene_input)
+        
         return scene_inputs
     
     def segment_training_inputs(self, training_inputs):
@@ -222,7 +248,9 @@ class NuScenes_Dataset(Dataset):
         while True:
             # get training input chunk of sequence_length
             training_input_chunk = training_inputs[input_idx : input_idx + (self.sequence_length-1)]
-            input_idx += 1 # training sequence간 겹치는 images 존재함
+            
+            input_idx = input_idx + self.sampling_rate
+            
             if len(training_input_chunk) < (self.sequence_length-1):
                 break
             
@@ -368,10 +396,6 @@ class NuScenes_Dataset(Dataset):
             total_samples_num += len(img_path_list)
             
             val_scene_datasets.append(NuScenes_Val_Dataset(img_path_list, pose_rel_list, imu_list, self.args))
-            
-            # TEMP
-            # if idx == 2:
-            #     break
 
         print('total samples: {}'.format(total_samples_num))
         

@@ -27,10 +27,14 @@ parser.add_argument('--dataroot', type=str, default='/datasets/nuscenes', help='
 parser.add_argument('--canbusroot', type=str, default='./data/nuscenes', help='path to save the result')
 parser.add_argument('--device', type=str, default='0', help='path to save the result')
 parser.add_argument('--batch_size', type=int, default=8, help='batch size')
+parser.add_argument('--experiment_name', type=str, default='experiment', help='experiment name')
 
-parser.add_argument('--save_dir', type=str, default='./results', help='path to save the result')
-
-# jeho
+# data sampling method
+parser.add_argument('--seq_len', type=int, default=11, help='sequence length for LSTM')
+parser.add_argument('--keyframe_only', default=True, action='store_true', help='whether to use keyframe only')
+parser.add_argument('--sampling_rate', type=int, default=1, help='sampling rate for the training input data')
+parser.add_argument('--max_imu_length', type=int, default=50, help='maximum imu length for each sequence') # 50 for nuscenes, 11 for kitti
+    
 # parser.add_argument('--img_w', type=int, default=512, help='image width')
 # parser.add_argument('--img_h', type=int, default=256, help='image height')
 parser.add_argument('--img_w', type=int, default=448, help='image width')
@@ -43,14 +47,17 @@ parser.add_argument('--rnn_hidden_size', type=int, default=1024, help='size of t
 parser.add_argument('--rnn_dropout_out', type=float, default=0.2, help='dropout for the LSTM output layer')
 parser.add_argument('--rnn_dropout_between', type=float, default=0.2, help='dropout within LSTM')
 parser.add_argument('--weight_decay', type=float, default=5e-6, help='weight decay for the optimizer')
-parser.add_argument('--seq_len', type=int, default=11, help='sequence length for LSTM')
 parser.add_argument('--workers', type=int, default=4, help='number of workers')
 
-# jeho
-# NuScenes - 68,000 training samples, total 25 epochs -> 1,700,000 iterations assuming batch size 1
-parser.add_argument('--epochs_warmup', type=int, default=5, help='number of epochs for warmup')
-parser.add_argument('--epochs_joint', type=int, default=15, help='number of epochs for joint training')
-parser.add_argument('--epochs_fine', type=int, default=5, help='number of epochs for finetuning')
+# Experiment 1
+# parser.add_argument('--epochs_warmup', type=int, default=5, help='number of epochs for warmup')
+# parser.add_argument('--epochs_joint', type=int, default=15, help='number of epochs for joint training')
+# parser.add_argument('--epochs_fine', type=int, default=5, help='number of epochs for finetuning')
+
+# experiment 2
+parser.add_argument('--epochs_warmup', type=int, default=20, help='number of epochs for warmup')
+parser.add_argument('--epochs_joint', type=int, default=20, help='number of epochs for joint training')
+parser.add_argument('--epochs_fine', type=int, default=10, help='number of epochs for finetuning')
 
 # KITTI - 17,000 training samples, total 100 epochs -> 1,700,000 iterations assuming batch size 1
 # parser.add_argument('--epochs_warmup', type=int, default=40, help='number of epochs for warmup')
@@ -63,7 +70,6 @@ parser.add_argument('--eta', type=float, default=0.05, help='exponential decay f
 parser.add_argument('--temp_init', type=float, default=5, help='initial temperature for gumbel-softmax')
 parser.add_argument('--Lambda', type=float, default=3e-5, help='penalty factor for the visual encoder usage')
 
-parser.add_argument('--experiment_name', type=str, default='experiment', help='experiment name')
 parser.add_argument('--optimizer', type=str, default='Adam', help='type of optimizer [Adam, SGD]')
 
 parser.add_argument('--pretrain_flownet',type=str, default='./pretrained_models/flownets_bn_EPE2.459.pth.tar', help='wehther to use the pre-trained flownet')
@@ -73,6 +79,7 @@ parser.add_argument('--color', default=False, action='store_true', help='whether
 parser.add_argument('--seed', type=int, default=0, help='random seed')
 parser.add_argument('--print_frequency', type=int, default=10, help='print frequency for loss values')
 parser.add_argument('--weighted', default=False, action='store_true', help='whether to use weighted sum')
+parser.add_argument('--save_dir', type=str, default='./results', help='path to save the result')
 
 args = parser.parse_args()
 
@@ -155,7 +162,7 @@ def train(model, optimizer, train_loader, selection, temp, logger, ep, p=0.5, we
 
 def main():
     mmcv.mkdir_or_exist(args.save_dir)
-    checkpoints_dir = os.path.join(args.save_dir, "experiment_1")
+    checkpoints_dir = os.path.join(args.save_dir, args.experiment_name)
     mmcv.mkdir_or_exist(checkpoints_dir)
     
     # Create logs
@@ -174,16 +181,16 @@ def main():
         transform_train += [custom_transform.RandomColorAug()]
     transform_train = custom_transform.Compose(transform_train)
 
-    ##############################################################
-    max_imu_length = 11 # KITTI
-    ##############################################################
-
     print("loading dataset...")
     
     train_dataset = NuScenes_Dataset(dataroot,
                                      mode='train',
+
                                      sequence_length=args.seq_len,
-                                     max_imu_length=max_imu_length,
+                                     keyframe_only=args.keyframe_only,
+                                     sampling_rate=args.sampling_rate,
+                                     max_imu_length=args.max_imu_length,
+
                                      cam_names=cam_names,
                                      transform=transform_train,
                                      nusc=nusc,
