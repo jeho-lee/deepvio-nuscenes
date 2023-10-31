@@ -40,14 +40,14 @@ class Inertial_encoder(nn.Module):
             nn.BatchNorm1d(256),
             nn.LeakyReLU(0.1, inplace=True),
             nn.Dropout(opt.imu_dropout))
-        self.proj = nn.Linear(256 * 1 * 11, opt.i_f_len)
+        self.proj = nn.Linear(256 * 1 * opt.max_imu_length, opt.i_f_len)
 
     def forward(self, x):
-        # x: (N, seq_len, 11, 6)
+        # x: (N, seq_len, imu_len, 6)
         batch_size = x.shape[0]
         seq_len = x.shape[1]
-        x = x.view(batch_size * seq_len, x.size(2), x.size(3))    # x: (N x seq_len, 11, 6)
-        x = self.encoder_conv(x.permute(0, 2, 1))                 # x: (N x seq_len, 64, 11)
+        x = x.view(batch_size * seq_len, x.size(2), x.size(3))    # x: (N x seq_len, imu_len, 6)
+        x = self.encoder_conv(x.permute(0, 2, 1))                 # x: (N x seq_len, 64, imu_len)
         out = self.proj(x.view(x.shape[0], -1))                   # out: (N x seq_len, 256)
         return out.view(batch_size, seq_len, 256)
 
@@ -72,6 +72,8 @@ class Encoder(nn.Module):
         self.visual_head = nn.Linear(int(np.prod(__tmp.size())), opt.v_f_len)
         self.inertial_encoder = Inertial_encoder(opt)
 
+        self.imu_len = opt.max_imu_length
+        
     def forward(self, img, imu):
         v = torch.cat((img[:, :-1], img[:, 1:]), dim=2)
         batch_size = v.size(0)
@@ -84,7 +86,7 @@ class Encoder(nn.Module):
         v = self.visual_head(v)  # (batch, seq_len, 256)
         
         # IMU CNN
-        imu = torch.cat([imu[:, i * 10:i * 10 + 11, :].unsqueeze(1) for i in range(seq_len)], dim=1)
+        imu = torch.cat([imu[:, i*(self.imu_len-1) : i*(self.imu_len-1) + self.imu_len, :].unsqueeze(1) for i in range(seq_len)], dim=1)
         imu = self.inertial_encoder(imu)
         return v, imu
 

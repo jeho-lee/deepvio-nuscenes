@@ -160,7 +160,7 @@ class NuScenes_Dataset(Dataset):
         scene_inputs = []
         for data_idx, cur_sample_data in enumerate(scene_sample_data):
             
-            # get image 
+            # get image
             cur_img_path = os.path.join(self.data_root, cur_sample_data['filename'])
             
             # get next image
@@ -248,9 +248,7 @@ class NuScenes_Dataset(Dataset):
         while True:
             # get training input chunk of sequence_length
             training_input_chunk = training_inputs[input_idx : input_idx + (self.sequence_length-1)]
-            
             input_idx = input_idx + self.sampling_rate
-            
             if len(training_input_chunk) < (self.sequence_length-1):
                 break
             
