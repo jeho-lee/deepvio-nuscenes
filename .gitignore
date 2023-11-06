@@ -4,6 +4,7 @@ __pycache__/
 utils/__pycahce__
 results/
 *.pth
+vis/
 
 # workspace dependent exec file
 train_nuscenes.sh
