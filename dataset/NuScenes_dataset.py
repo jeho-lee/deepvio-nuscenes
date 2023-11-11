@@ -49,6 +49,7 @@ class NuScenes_Dataset(Dataset):
                  
                  sequence_length=11,
                  keyframe_only=True,
+                 use_all_cams=True,
                  sampling_rate = 1,
                  max_imu_length = 50,
                  
@@ -61,6 +62,7 @@ class NuScenes_Dataset(Dataset):
         
         # Determine data sampling
         self.keyframe_only = keyframe_only
+        self.use_all_cams = use_all_cams
         self.sampling_rate = sampling_rate
         self.sequence_length = sequence_length
         self.max_imu_length = max_imu_length
@@ -353,15 +355,20 @@ class NuScenes_Dataset(Dataset):
         self.samples, self.weights = [], []
         for idx, train_scene in enumerate(target_train_scenes):
             
-            # select camera one by one
-            cam_name = self.cam_names[idx % len(self.cam_names)]
+            cam_names = []
+            if self.use_all_cams:
+                for cam_name in self.cam_names:
+                    cam_names.append(cam_name)
+            else:
+                cam_names.append(self.cam_names[idx % len(self.cam_names)])
             
-            # collect samples and weights                
-            scene_sample_data, scene_imu_data = self.get_scene_data(train_scene, cam_name)
-            scene_training_inputs = self.format_scene_inputs(scene_sample_data, scene_imu_data)
-            scene_samples, scene_weights = self.segment_training_inputs(scene_training_inputs)
-            self.samples.extend(scene_samples)
-            self.weights.extend(scene_weights)
+            for cam_name in cam_names:
+                # collect samples and weights                
+                scene_sample_data, scene_imu_data = self.get_scene_data(train_scene, cam_name)
+                scene_training_inputs = self.format_scene_inputs(scene_sample_data, scene_imu_data)
+                scene_samples, scene_weights = self.segment_training_inputs(scene_training_inputs)
+                self.samples.extend(scene_samples)
+                self.weights.extend(scene_weights)
         
         print('total samples: {}'.format(len(self.samples)))
         assert len(self.samples) == len(self.weights)
@@ -375,13 +382,8 @@ class NuScenes_Dataset(Dataset):
         for idx, val_scene in enumerate(target_val_scenes):
             img_path_list, pose_rel_list, imu_list = [], [], []
             
-            """
-            TODO
-            camera to ego transformation을 고려해야 하는지?
-            """
             # select camera one by one
             cam_name = self.cam_names[idx % len(self.cam_names)]
-            # cam_name = "CAM_FRONT"
             
             scene_sample_data, scene_imu_data = self.get_scene_data(val_scene, cam_name)
             scene_val_inputs = self.format_scene_inputs(scene_sample_data, scene_imu_data)

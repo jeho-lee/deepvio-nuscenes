@@ -32,6 +32,7 @@ parser.add_argument('--experiment_name', type=str, default='experiment', help='e
 # data sampling method
 parser.add_argument('--seq_len', type=int, default=11, help='sequence length for LSTM')
 parser.add_argument('--keyframe_only', default=False, action='store_true', help='whether to use keyframe only')
+parser.add_argument('--use_all_cams', default=False, action='store_true', help='whether to use keyframe only')
 parser.add_argument('--sampling_rate', type=int, default=1, help='sampling rate for the training input data')
 parser.add_argument('--max_imu_length', type=int, default=50, help='maximum imu length for each sequence') # 50 for nuscenes, 11 for kitti
     
@@ -188,6 +189,7 @@ def main():
 
                                      sequence_length=args.seq_len,
                                      keyframe_only=args.keyframe_only,
+                                     use_all_cams=args.use_all_cams,
                                      sampling_rate=args.sampling_rate,
                                      max_imu_length=args.max_imu_length,
 
