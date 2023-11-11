@@ -396,6 +396,9 @@ class NuScenes_Dataset(Dataset):
             total_samples_num += len(img_path_list)
             
             val_scene_datasets.append(NuScenes_Val_Dataset(img_path_list, pose_rel_list, imu_list, self.args))
+            
+            # if idx == 5:
+            #     break
 
         print('total samples: {}'.format(total_samples_num))
         

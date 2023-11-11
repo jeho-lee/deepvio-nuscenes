@@ -59,7 +59,7 @@ class NuScenes_Tester():
                         self.est[i]['pose_est_global'], 
                         save_dir, 
                         self.est[i]['decs'], 
-                        self.est[i]['speed'], 
+                        # self.est[i]['speed'], 
                         window_size)
             
     def save_text(self, save_dir):
@@ -69,7 +69,8 @@ class NuScenes_Tester():
             print('scene_dataset {} saved'.format(scene_dataset))
 
 
-def plotPath_2D(seq, poses_gt_mat, poses_est_mat, plot_path_dir, decision, speed, window_size):
+# def plotPath_2D(seq, poses_gt_mat, poses_est_mat, plot_path_dir, decision, speed, window_size):
+def plotPath_2D(seq, poses_gt_mat, poses_est_mat, plot_path_dir, decision, window_size):
     
     # Apply smoothing to the decision
     decision = np.insert(decision, 0, 1)
@@ -187,28 +188,28 @@ def plotPath_2D(seq, poses_gt_mat, poses_est_mat, plot_path_dir, decision, speed
     plt.close()
 
     # Plot the speed map
-    fig = plt.figure(figsize=(8, 6), dpi=100)
-    ax = plt.gca()
-    cout = speed
-    cax = plt.scatter(x_pred, z_pred, marker='o', c=cout)
-    plt.xlabel('x (m)', fontsize=fontsize_)
-    plt.ylabel('z (m)', fontsize=fontsize_)
-    xlim = ax.get_xlim()
-    ylim = ax.get_ylim()
-    xmean = np.mean(xlim)
-    ymean = np.mean(ylim)
-    ax.set_xlim([xmean - plot_radius, xmean + plot_radius])
-    ax.set_ylim([ymean - plot_radius, ymean + plot_radius])
-    max_speed = max(cout)
-    min_speed = min(cout)
-    ticks = np.floor(np.linspace(min_speed, max_speed, num=5))
-    cbar = fig.colorbar(cax, ticks=ticks)
-    cbar.ax.set_yticklabels([str(i) + 'm/s' for i in ticks])
+    # fig = plt.figure(figsize=(8, 6), dpi=100)
+    # ax = plt.gca()
+    # cout = speed
+    # cax = plt.scatter(x_pred, z_pred, marker='o', c=cout)
+    # plt.xlabel('x (m)', fontsize=fontsize_)
+    # plt.ylabel('z (m)', fontsize=fontsize_)
+    # xlim = ax.get_xlim()
+    # ylim = ax.get_ylim()
+    # xmean = np.mean(xlim)
+    # ymean = np.mean(ylim)
+    # ax.set_xlim([xmean - plot_radius, xmean + plot_radius])
+    # ax.set_ylim([ymean - plot_radius, ymean + plot_radius])
+    # max_speed = max(cout)
+    # min_speed = min(cout)
+    # ticks = np.floor(np.linspace(min_speed, max_speed, num=5))
+    # cbar = fig.colorbar(cax, ticks=ticks)
+    # cbar.ax.set_yticklabels([str(i) + 'm/s' for i in ticks])
 
-    plt.title('speed heatmap')
-    png_title = "{}_speed".format(seq)
-    plt.savefig(plot_path_dir + "/" + png_title + ".png", bbox_inches='tight', pad_inches=0.1)
-    plt.close()
+    # plt.title('speed heatmap')
+    # png_title = "{}_speed".format(seq)
+    # plt.savefig(plot_path_dir + "/" + png_title + ".png", bbox_inches='tight', pad_inches=0.1)
+    # plt.close()
 
 
 def kitti_err_cal(pose_est_mat, pose_gt_mat):
