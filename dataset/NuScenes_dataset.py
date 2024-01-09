@@ -48,10 +48,11 @@ class NuScenes_Dataset(Dataset):
                  mode='train', # or 'val'
                  
                  sequence_length=11,
-                 keyframe_only=True,
-                 use_all_cams=True,
+                 keyframe_only=False,
+                 use_all_cams=False,
                  sampling_rate = 1,
                  max_imu_length = 50,
+                 use_camfront_only = False,
                  
                  cam_names = ["CAM_FRONT", "CAM_FRONT_RIGHT", "CAM_BACK_RIGHT", "CAM_BACK", "CAM_BACK_LEFT", "CAM_FRONT_LEFT"],
                  transform=None,
@@ -66,6 +67,7 @@ class NuScenes_Dataset(Dataset):
         self.sampling_rate = sampling_rate
         self.sequence_length = sequence_length
         self.max_imu_length = max_imu_length
+        self.use_camfront_only = use_camfront_only
         
         if nusc is None:
             self.nusc = NuScenes(version='v1.0-trainval', dataroot=self.data_root, verbose=False)
@@ -162,66 +164,82 @@ class NuScenes_Dataset(Dataset):
         scene_inputs = []
         for data_idx, cur_sample_data in enumerate(scene_sample_data):
             
-            # get image
-            cur_img_path = os.path.join(self.data_root, cur_sample_data['filename'])
+            # 1. Get image input
+            cur_img_path = os.path.join(self.data_root, cur_sample_data['filename']) # cur image
             
-            # get next image
-            if data_idx + 1 < len(scene_sample_data):
+            if data_idx + 1 < len(scene_sample_data): # next image
                 next_sample_data = scene_sample_data[data_idx + 1]
                 next_img_path = os.path.join(self.data_root, next_sample_data['filename'])
             else:
                 break
             
-            # get camera to ego transformation
-            cur_cam2ego = self.nusc.get('calibrated_sensor', cur_sample_data['calibrated_sensor_token'])
-            cur_cam2ego_mat = geometry_utils.transform_matrix(cur_cam2ego['translation'], Quaternion(cur_cam2ego['rotation']), inverse=False)
+            # 2. Get ground-truth relative pose
             
-            next_cam2ego = self.nusc.get('calibrated_sensor', next_sample_data['calibrated_sensor_token'])
-            next_cam2ego_mat = geometry_utils.transform_matrix(next_cam2ego['translation'], Quaternion(next_cam2ego['rotation']), inverse=False)
+            # (방법 1) 2024-1-9
+            # get camera to ego transformation
+            # cur_cam2ego = self.nusc.get('calibrated_sensor', cur_sample_data['calibrated_sensor_token'])
+            # cur_cam2ego_mat = geometry_utils.transform_matrix(cur_cam2ego['translation'], Quaternion(cur_cam2ego['rotation']), inverse=False)
+            
+            # next_cam2ego = self.nusc.get('calibrated_sensor', next_sample_data['calibrated_sensor_token'])
+            # next_cam2ego_mat = geometry_utils.transform_matrix(next_cam2ego['translation'], Quaternion(next_cam2ego['rotation']), inverse=False)
+            
+            # # get ego pose (global to ego transformation)
+            # cur_ego_pose = self.nusc.get('ego_pose', cur_sample_data['ego_pose_token'])
+            # cur_ego_pose_mat = geometry_utils.transform_matrix(cur_ego_pose['translation'], Quaternion(cur_ego_pose['rotation']), inverse=False)
+            
+            # next_ego_pose = self.nusc.get('ego_pose', next_sample_data['ego_pose_token'])
+            # next_ego_pose_mat = geometry_utils.transform_matrix(next_ego_pose['translation'], Quaternion(next_ego_pose['rotation']), inverse=False)
+
+            # cur_cam2global = np.dot(cur_ego_pose_mat, cur_cam2ego_mat)
+            # next_cam2global = np.dot(next_ego_pose_mat, next_cam2ego_mat)
+            
+            # # relative_pose = np.dot(np.linalg.inv(cur_cam2global), next_cam2global) # previous
+            # relative_pose = np.dot(np.linalg.inv(next_cam2global), cur_cam2global)
+
+            # (방법 2) 2024-1-9: GT relative pose는 cur ego 2 next ego로!
+            # IMU (Ego) 센서와 camera 센서의 좌표계 정의가 다름, IMU data는 x축이 forward 방향인데, cam_front는 z축이 forward 방향임
             
             # get ego pose (global to ego transformation)
-            cur_ego_pose = self.nusc.get('ego_pose', cur_sample_data['ego_pose_token'])
-            cur_ego_pose_mat = geometry_utils.transform_matrix(cur_ego_pose['translation'], Quaternion(cur_ego_pose['rotation']), inverse=False)
+            cur_ego2global = self.nusc.get('ego_pose', cur_sample_data['ego_pose_token'])
+            cur_ego2global_mat = geometry_utils.transform_matrix(cur_ego2global['translation'], Quaternion(cur_ego2global['rotation']), inverse=False)
             
-            next_ego_pose = self.nusc.get('ego_pose', next_sample_data['ego_pose_token'])
-            next_ego_pose_mat = geometry_utils.transform_matrix(next_ego_pose['translation'], Quaternion(next_ego_pose['rotation']), inverse=False)
+            next_ego2global = self.nusc.get('ego_pose', next_sample_data['ego_pose_token'])
+            next_ego2global_mat = geometry_utils.transform_matrix(next_ego2global['translation'], Quaternion(next_ego2global['rotation']), inverse=False)
 
-            cur_cam2global = np.dot(cur_ego_pose_mat, cur_cam2ego_mat)
-            next_cam2global = np.dot(next_ego_pose_mat, next_cam2ego_mat)
+            # 좌표계 변환이라기 보단, ego car 자체의 pose 변환 그 자체
+            Rt_rel = np.linalg.inv(cur_ego2global_mat) @ next_ego2global_mat
+    
+            R_rel = Rt_rel[:3, :3]
+            t_rel = Rt_rel[:3, 3]
             
-            # get relative pose
-            # relative_pose = np.dot(np.linalg.inv(cur_ego_pose_mat), next_ego_pose_mat)
-            relative_pose = np.dot(np.linalg.inv(cur_cam2global), next_cam2global)
-            R_rel = relative_pose[:3, :3]
-            t_rel = relative_pose[:3, 3]
-                
             x, y, z = euler_from_matrix(R_rel) # Extract the Eular angle from the relative rotation matrix
             theta = [x, y, z]
 
             pose_rel = np.concatenate((theta, t_rel))
             
-            # get imu data
+            # 3. Get imu data
             cur_timestamp = cur_sample_data['timestamp']
             next_timestamp = next_sample_data['timestamp']
             
-            # get imu data between cur and next timestamp
             imu_data = []
             for imu in scene_imu_data:
                 imu_timestamp = imu['utime']
-                if imu_timestamp > cur_timestamp and imu_timestamp < next_timestamp:
+                if imu_timestamp > cur_timestamp and imu_timestamp < next_timestamp: # get imu data between cur and next timestamp
                     data = imu['linear_accel'] + imu['rotation_rate']
                     imu_data.append(data)
             
+            # 2024-1-9, no skip for cam_front only training
             # if no matched imu data, skip
-            if len(imu_data) <= 2:
-                # continue
-                return None
-                
-            # if imu data length is less than max_imu_length, pad with zeros
-            if len(imu_data) < self.max_imu_length:
+            # if len(imu_data) <= 2:
+            #     # continue
+            #     return None
+
+            if len(imu_data) == 0:
+                imu_data = np.zeros((self.max_imu_length, 6))
+            elif len(imu_data) < self.max_imu_length:
+                # if imu data length is less than max_imu_length, pad with zeros
                 imu_data = np.pad(imu_data, ((0, self.max_imu_length - len(imu_data)), (0, 0)), 'constant', constant_values=0)
             elif len(imu_data) > self.max_imu_length:
-                # imu_data = imu_data[:self.max_imu_length]
                 # delete imu data evenly
                 delete_num = len(imu_data) - self.max_imu_length
                 step = len(imu_data) // delete_num
@@ -234,8 +252,10 @@ class NuScenes_Dataset(Dataset):
             scene_input = {
                 'cur_img_path': cur_img_path,
                 'next_img_path': next_img_path,
-                'cur_ego_pose': cur_ego_pose_mat,
-                'next_ego_pose': next_ego_pose_mat,
+                # 'cur_ego_pose': cur_ego_pose_mat,
+                # 'next_ego_pose': next_ego_pose_mat,
+                'cur_ego_pose': cur_ego2global_mat,
+                'next_ego_pose': next_ego2global_mat,
                 'pose_rel': pose_rel,
                 'imu_data': imu_data
             }
@@ -320,7 +340,7 @@ class NuScenes_Dataset(Dataset):
             imu_samples.append(np.array(imus))
 
         return img_samples, pose_rel_samples, imu_samples
-                
+
     def filter_dataset(self, scenes):
         skipped_scene = []
         imuavail_scenes = []
@@ -362,8 +382,12 @@ class NuScenes_Dataset(Dataset):
             else:
                 cam_names.append(self.cam_names[idx % len(self.cam_names)])
             
+            if self.use_camfront_only:
+                cam_names = ['CAM_FRONT']
+            
             for cam_name in cam_names:
-                # collect samples and weights                
+                print(cam_name)
+                # collect samples and weights
                 scene_sample_data, scene_imu_data = self.get_scene_data(train_scene, cam_name)
                 scene_training_inputs = self.format_scene_inputs(scene_sample_data, scene_imu_data)
                 scene_samples, scene_weights = self.segment_training_inputs(scene_training_inputs)
@@ -384,6 +408,9 @@ class NuScenes_Dataset(Dataset):
             
             # select camera one by one
             cam_name = self.cam_names[idx % len(self.cam_names)]
+            
+            if self.use_camfront_only:
+                cam_name = 'CAM_FRONT'
             
             scene_sample_data, scene_imu_data = self.get_scene_data(val_scene, cam_name)
             scene_val_inputs = self.format_scene_inputs(scene_sample_data, scene_imu_data)

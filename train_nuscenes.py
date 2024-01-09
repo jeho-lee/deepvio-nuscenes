@@ -32,9 +32,10 @@ parser.add_argument('--experiment_name', type=str, default='experiment', help='e
 # data sampling method
 parser.add_argument('--seq_len', type=int, default=11, help='sequence length for LSTM')
 parser.add_argument('--keyframe_only', default=False, action='store_true', help='whether to use keyframe only')
-parser.add_argument('--use_all_cams', default=False, action='store_true', help='whether to use keyframe only')
+parser.add_argument('--use_all_cams', default=False, action='store_true', help='whether to use_all_cams')
 parser.add_argument('--sampling_rate', type=int, default=1, help='sampling rate for the training input data')
 parser.add_argument('--max_imu_length', type=int, default=50, help='maximum imu length for each sequence') # 50 for nuscenes, 11 for kitti
+parser.add_argument('--use_camfront_only', default=False, action='store_true', help='whether to use cam_front only')
     
 # parser.add_argument('--img_w', type=int, default=512, help='image width')
 # parser.add_argument('--img_h', type=int, default=256, help='image height')
@@ -192,6 +193,7 @@ def main():
                                      use_all_cams=args.use_all_cams,
                                      sampling_rate=args.sampling_rate,
                                      max_imu_length=args.max_imu_length,
+                                     use_camfront_only=args.use_camfront_only,
 
                                      cam_names=cam_names,
                                      transform=transform_train,
@@ -238,12 +240,15 @@ def main():
         logger.info('Training from scratch')
     
     # Use the pre-trained flownet or not
-    if args.pretrain_flownet and args.pretrain is None:
-        pretrained_w = torch.load(args.pretrain_flownet, map_location='cpu')
-        model_dict = model.Feature_net.state_dict()
-        update_dict = {k: v for k, v in pretrained_w['state_dict'].items() if k in model_dict}
-        model_dict.update(update_dict)
-        model.Feature_net.load_state_dict(model_dict)
+    if args.pretrain is None:
+        if args.pretrain_flownet != '':
+            pretrained_w = torch.load(args.pretrain_flownet, map_location='cpu')
+            model_dict = model.Feature_net.state_dict()
+            update_dict = {k: v for k, v in pretrained_w['state_dict'].items() if k in model_dict}
+            model_dict.update(update_dict)
+            model.Feature_net.load_state_dict(model_dict)
+        else:
+            print("No pretrained flownet is used")
 
     # Feed model to GPU
     # model.to(device)
@@ -276,13 +281,14 @@ def main():
         model.train()
         avg_pose_loss, avg_penalty_loss = train(model, optimizer, train_loader, selection, temp, logger, ep, p=0.5)
 
-        if ep > args.epochs_warmup+args.epochs_joint:
+        if ep % 5 == 0:
             # Save the model after training
             torch.save(model.module.state_dict(), f'{checkpoints_dir}/{ep:003}.pth')
             message = f'Epoch {ep} training finished, pose loss: {avg_pose_loss:.6f}, penalty_loss: {avg_penalty_loss:.6f}, model saved'
             print(message)
             logger.info(message)
-        
+
+        if ep > args.epochs_warmup+args.epochs_joint:
             # Evaluate the model
             print('Evaluating the model')
             logger.info('Evaluating the model')
