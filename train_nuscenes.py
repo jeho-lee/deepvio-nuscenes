@@ -169,6 +169,10 @@ def main():
     
     # Create logs
     logger = logging.getLogger(args.experiment_name)
+    
+    fileHanlder = logging.FileHandler(os.path.join(checkpoints_dir, 'train_log.txt'))
+    logger.addHandler(fileHanlder)
+    
     logger.setLevel(logging.INFO)
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
     logger.info('----------------------------------------TRAINING----------------------------------')
