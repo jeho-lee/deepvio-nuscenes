@@ -175,29 +175,12 @@ class NuScenes_Dataset(Dataset):
             
             # 2. Get ground-truth relative pose
             
-            # (방법 1) 2024-1-9
             # get camera to ego transformation
-            # cur_cam2ego = self.nusc.get('calibrated_sensor', cur_sample_data['calibrated_sensor_token'])
-            # cur_cam2ego_mat = geometry_utils.transform_matrix(cur_cam2ego['translation'], Quaternion(cur_cam2ego['rotation']), inverse=False)
+            cur_cam2ego = self.nusc.get('calibrated_sensor', cur_sample_data['calibrated_sensor_token'])
+            cur_cam2ego_mat = geometry_utils.transform_matrix(cur_cam2ego['translation'], Quaternion(cur_cam2ego['rotation']), inverse=False)
             
-            # next_cam2ego = self.nusc.get('calibrated_sensor', next_sample_data['calibrated_sensor_token'])
-            # next_cam2ego_mat = geometry_utils.transform_matrix(next_cam2ego['translation'], Quaternion(next_cam2ego['rotation']), inverse=False)
-            
-            # # get ego pose (global to ego transformation)
-            # cur_ego_pose = self.nusc.get('ego_pose', cur_sample_data['ego_pose_token'])
-            # cur_ego_pose_mat = geometry_utils.transform_matrix(cur_ego_pose['translation'], Quaternion(cur_ego_pose['rotation']), inverse=False)
-            
-            # next_ego_pose = self.nusc.get('ego_pose', next_sample_data['ego_pose_token'])
-            # next_ego_pose_mat = geometry_utils.transform_matrix(next_ego_pose['translation'], Quaternion(next_ego_pose['rotation']), inverse=False)
-
-            # cur_cam2global = np.dot(cur_ego_pose_mat, cur_cam2ego_mat)
-            # next_cam2global = np.dot(next_ego_pose_mat, next_cam2ego_mat)
-            
-            # # relative_pose = np.dot(np.linalg.inv(cur_cam2global), next_cam2global) # previous
-            # relative_pose = np.dot(np.linalg.inv(next_cam2global), cur_cam2global)
-
-            # (방법 2) 2024-1-9: GT relative pose는 cur ego 2 next ego로!
-            # IMU (Ego) 센서와 camera 센서의 좌표계 정의가 다름, IMU data는 x축이 forward 방향인데, cam_front는 z축이 forward 방향임
+            next_cam2ego = self.nusc.get('calibrated_sensor', next_sample_data['calibrated_sensor_token'])
+            next_cam2ego_mat = geometry_utils.transform_matrix(next_cam2ego['translation'], Quaternion(next_cam2ego['rotation']), inverse=False)
             
             # get ego pose (global to ego transformation)
             cur_ego2global = self.nusc.get('ego_pose', cur_sample_data['ego_pose_token'])
@@ -206,8 +189,12 @@ class NuScenes_Dataset(Dataset):
             next_ego2global = self.nusc.get('ego_pose', next_sample_data['ego_pose_token'])
             next_ego2global_mat = geometry_utils.transform_matrix(next_ego2global['translation'], Quaternion(next_ego2global['rotation']), inverse=False)
 
-            # 좌표계 변환이라기 보단, ego car 자체의 pose 변환 그 자체
-            Rt_rel = np.linalg.inv(cur_ego2global_mat) @ next_ego2global_mat
+            cur_cam2global = np.dot(cur_ego2global_mat, cur_cam2ego_mat)
+            next_cam2global = np.dot(next_ego2global_mat, next_cam2ego_mat)
+            
+            # get relative pose - 좌표계 변환을 위한 것이 아닌, ego car 자체의 pose 변환 그 자체
+            # Rt_rel = np.linalg.inv(cur_cam2global) @ next_cam2global # 방법 1: cur cam to next cam
+            Rt_rel = np.linalg.inv(cur_ego2global_mat) @ next_ego2global_mat # 방법 2: cur ego to next ego
     
             R_rel = Rt_rel[:3, :3]
             t_rel = Rt_rel[:3, 3]
@@ -228,11 +215,10 @@ class NuScenes_Dataset(Dataset):
                     data = imu['linear_accel'] + imu['rotation_rate']
                     imu_data.append(data)
             
-            # 2024-1-9, no skip for cam_front only training
             # if no matched imu data, skip
-            # if len(imu_data) <= 2:
-            #     # continue
-            #     return None
+            if len(imu_data) <= 2:
+                # continue
+                return None
 
             if len(imu_data) == 0:
                 imu_data = np.zeros((self.max_imu_length, 6))
